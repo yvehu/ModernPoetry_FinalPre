@@ -18,12 +18,38 @@ export class GestureRecognizer {
     try {
       console.log('[GestureRecognizer] 开始初始化 MediaPipe Hands...');
       
+      // 确保 MediaPipe 已加载（动态导入作为备用）
+      let HandsClass = Hands;
+      let CameraClass = Camera;
+      
+      // 检查 Hands 是否可用
+      if (!HandsClass || typeof HandsClass !== 'function') {
+        console.warn('[GestureRecognizer] ⚠️ Hands 未正确导入，尝试动态导入...');
+        try {
+          // 尝试动态导入
+          const handsModule = await import('@mediapipe/hands');
+          const cameraModule = await import('@mediapipe/camera_utils');
+          HandsClass = handsModule.Hands || handsModule.default?.Hands;
+          CameraClass = cameraModule.Camera || cameraModule.default?.Camera;
+          
+          if (!HandsClass || typeof HandsClass !== 'function') {
+            throw new Error('MediaPipe Hands 动态导入失败。Hands 类型: ' + typeof HandsClass);
+          }
+          console.log('[GestureRecognizer] ✅ MediaPipe 动态导入成功');
+        } catch (importError) {
+          console.error('[GestureRecognizer] ❌ MediaPipe 导入失败:', importError);
+          throw new Error('无法加载 MediaPipe Hands: ' + importError.message);
+        }
+      } else {
+        console.log('[GestureRecognizer] ✅ Hands 构造函数可用');
+      }
+      
       // 使用正确的 MediaPipe 配置
       // 针对 GitHub Pages 和本地环境优化资源加载
       // 检测是否在生产环境（GitHub Pages）
       const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
       
-      this.hands = new Hands({
+      this.hands = new HandsClass({
         locateFile: (file) => {
           // MediaPipe 文件路径处理
           // 使用多个 CDN 源以提高可靠性
@@ -106,8 +132,9 @@ export class GestureRecognizer {
       });
     }
 
-    // 创建 Camera 实例
-    this.camera = new Camera(videoElement, {
+    // 创建 Camera 实例（使用动态导入的 CameraClass）
+    const CameraClassToUse = CameraClass || Camera;
+    this.camera = new CameraClassToUse(videoElement, {
       onFrame: async () => {
         try {
           // 确保视频元素有有效的视频流和 MediaPipe 已初始化

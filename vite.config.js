@@ -16,6 +16,21 @@ export default defineConfig({
       // 允许 MediaPipe 使用 eval（仅开发环境）
       'Content-Security-Policy': "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net; object-src 'none';"
     }
+  },
+  build: {
+    // 确保 MediaPipe 不会被 tree-shaking
+    rollupOptions: {
+      output: {
+        // 确保 MediaPipe 相关代码不被优化掉
+        manualChunks: undefined
+      }
+    },
+    // 增加 chunk 大小限制
+    chunkSizeWarningLimit: 1000
+  },
+  optimizeDeps: {
+    // 确保 MediaPipe 被正确预构建
+    include: ['@mediapipe/hands', '@mediapipe/camera_utils']
   }
 })
 

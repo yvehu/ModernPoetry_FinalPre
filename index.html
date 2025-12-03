@@ -42,13 +42,18 @@
     <script>
       // 立即执行的调试脚本
       console.log('[HTML] ✅ HTML 文件已加载');
-      console.log('[HTML] ✅ root 元素:', document.getElementById('root'));
+      const rootEl = document.getElementById('root');
+      if (rootEl) {
+        console.log('[HTML] ✅ root 元素存在');
+      } else {
+        console.warn('[HTML] ⚠️ root 元素不存在');
+      }
       
       // 捕获错误但不显示在页面上（静默处理 MediaPipe 错误）
       window.addEventListener('error', (e) => {
         // 如果是 MediaPipe 相关的错误，静默处理
         const errorMsg = e.message || '';
-        if (errorMsg.includes('mediapipe') || errorMsg.includes('cdn.jsdelivr.net') || errorMsg.includes('hands_solution')) {
+        if (errorMsg.includes('mediapipe') || errorMsg.includes('cdn.jsdelivr.net') || errorMsg.includes('hands_solution') || errorMsg.includes('Hands is not a constructor')) {
           console.warn('[HTML] MediaPipe 错误（已静默处理）:', errorMsg);
           e.preventDefault(); // 阻止错误冒泡
           return false; // 不显示错误
