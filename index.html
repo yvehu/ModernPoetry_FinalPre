@@ -4,7 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- Content Security Policy: 允许 unsafe-eval 用于 MediaPipe -->
-    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net https://*.jsdelivr.net; connect-src 'self' https://cdn.jsdelivr.net https://*.jsdelivr.net; object-src 'none';">
+    <!-- GitHub Pages 可能需要更宽松的 CSP 策略 -->
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net https://*.jsdelivr.net https://unpkg.com; connect-src 'self' https://cdn.jsdelivr.net https://*.jsdelivr.net https://unpkg.com https://*.unpkg.com blob: data:; worker-src 'self' blob:; object-src 'none';">
     <title>Four Ways of Decoding New York</title>
     <style>
       * {

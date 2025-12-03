@@ -109,12 +109,19 @@ const App = () => {
         });
 
         console.log('[App] 正在初始化手势识别器...');
+        
+        // 检测环境
+        const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+        console.log('[App] 环境检测:', isProduction ? '生产环境 (GitHub Pages)' : '开发环境');
+        
         setMediaPipeStatus('正在加载 MediaPipe 模型...');
         
         // 添加超时处理，避免 MediaPipe 加载卡住
+        // 生产环境给更多时间
+        const timeout = isProduction ? 15000 : 10000;
         const initPromise = recognizer.initialize(video);
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('MediaPipe 初始化超时')), 10000)
+          setTimeout(() => reject(new Error('MediaPipe 初始化超时')), timeout)
         );
         
         try {
@@ -126,6 +133,7 @@ const App = () => {
           console.log('[App] 💡 调试：按 D 键切换摄像头预览显示');
         } catch (initError) {
           console.warn('[App] ⚠️ MediaPipe 初始化失败，但页面继续运行:', initError.message);
+          console.warn('[App] 环境:', isProduction ? 'GitHub Pages' : '本地开发');
           setMediaPipeStatus('❌ MediaPipe 加载失败');
           // 不抛出错误，让页面继续运行
         }

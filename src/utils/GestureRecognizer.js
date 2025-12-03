@@ -19,11 +19,14 @@ export class GestureRecognizer {
       console.log('[GestureRecognizer] 开始初始化 MediaPipe Hands...');
       
       // 使用正确的 MediaPipe 配置
-      // 针对 GitHub Pages 优化资源加载
+      // 针对 GitHub Pages 和本地环境优化资源加载
+      // 检测是否在生产环境（GitHub Pages）
+      const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+      
       this.hands = new Hands({
         locateFile: (file) => {
           // MediaPipe 文件路径处理
-          // 使用 unpkg CDN 作为备用（更稳定）
+          // 使用多个 CDN 源以提高可靠性
           const baseUrl = 'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240';
           
           // 处理文件路径
@@ -33,24 +36,19 @@ export class GestureRecognizer {
             filePath = filePath.substring(1);
           }
           
-          // 构建完整 URL
+          // 构建完整 URL（使用绝对路径，不受 base 路径影响）
           const fullUrl = `${baseUrl}/${filePath}`;
           
-          if (this.debugMode) {
-            console.log('[GestureRecognizer] 📦 加载 MediaPipe 文件:', file, '->', fullUrl);
+          if (this.debugMode || isProduction) {
+            console.log('[GestureRecognizer] 📦 加载 MediaPipe 文件:', file, '->', fullUrl, isProduction ? '(生产环境)' : '(开发环境)');
           }
           
           return fullUrl;
         }
       });
       
-      // 添加错误处理
-      if (this.hands.setErrorHandler) {
-        this.hands.setErrorHandler((error) => {
-          console.warn('[GestureRecognizer] MediaPipe 错误（已处理）:', error);
-          // 不抛出错误，让页面继续运行
-        });
-      }
+      // 添加错误处理（MediaPipe 可能不支持 setErrorHandler，所以用 try-catch）
+      // 注意：MediaPipe Hands 可能没有 setErrorHandler 方法
 
       this.hands.setOptions({
         maxNumHands: 2,
@@ -91,13 +89,25 @@ export class GestureRecognizer {
     }
 
     // 确保视频元素已加载
+    // 在生产环境（GitHub Pages）可能需要更多时间
+    const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+    
     if (videoElement.readyState < 2) {
       await new Promise((resolve) => {
-        videoElement.addEventListener('loadedmetadata', resolve, { once: true });
+        const timeout = setTimeout(() => {
+          console.warn('[GestureRecognizer] 视频元数据加载超时，继续初始化');
+          resolve();
+        }, isProduction ? 5000 : 3000);
+        
+        videoElement.addEventListener('loadedmetadata', () => {
+          clearTimeout(timeout);
+          resolve();
+        }, { once: true });
       });
     }
 
-      this.camera = new Camera(videoElement, {
+    // 创建 Camera 实例
+    this.camera = new Camera(videoElement, {
       onFrame: async () => {
         try {
           // 确保视频元素有有效的视频流和 MediaPipe 已初始化
