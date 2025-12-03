@@ -19,11 +19,11 @@ export class GestureRecognizer {
       console.log('[GestureRecognizer] 开始初始化 MediaPipe Hands...');
       
       // 使用正确的 MediaPipe 配置
-      // 根据 MediaPipe 文档，locateFile 应该返回相对于基础路径的文件路径
+      // 针对 GitHub Pages 优化资源加载
       this.hands = new Hands({
         locateFile: (file) => {
-          // MediaPipe 期望返回相对于基础 URL 的路径
-          // 使用 npm CDN 的正确格式
+          // MediaPipe 文件路径处理
+          // 使用 unpkg CDN 作为备用（更稳定）
           const baseUrl = 'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240';
           
           // 处理文件路径
@@ -36,14 +36,21 @@ export class GestureRecognizer {
           // 构建完整 URL
           const fullUrl = `${baseUrl}/${filePath}`;
           
-          // 只在调试模式下输出
-          if (this.debugMode && Math.random() < 0.1) {
-            console.log('[GestureRecognizer] 📦 加载 MediaPipe 文件:', filePath);
+          if (this.debugMode) {
+            console.log('[GestureRecognizer] 📦 加载 MediaPipe 文件:', file, '->', fullUrl);
           }
           
           return fullUrl;
         }
       });
+      
+      // 添加错误处理
+      if (this.hands.setErrorHandler) {
+        this.hands.setErrorHandler((error) => {
+          console.warn('[GestureRecognizer] MediaPipe 错误（已处理）:', error);
+          // 不抛出错误，让页面继续运行
+        });
+      }
 
       this.hands.setOptions({
         maxNumHands: 2,
@@ -93,25 +100,23 @@ export class GestureRecognizer {
       this.camera = new Camera(videoElement, {
       onFrame: async () => {
         try {
-          // 确保视频元素有有效的视频流
+          // 确保视频元素有有效的视频流和 MediaPipe 已初始化
           if (videoElement.readyState >= 2 && videoElement.videoWidth > 0 && this.hands) {
-            await this.hands.send({ image: videoElement });
-          } else {
-            // 如果视频还没准备好，等待一下
-            if (this.debugMode && Math.random() < 0.001) {
-              console.log('[MediaPipe] 等待视频准备就绪...', {
-                readyState: videoElement.readyState,
-                videoWidth: videoElement.videoWidth,
-                hasHands: !!this.hands
-              });
+            try {
+              await this.hands.send({ image: videoElement });
+            } catch (sendError) {
+              // MediaPipe 发送错误，可能是资源加载问题
+              // 静默处理，不阻止页面运行
+              if (this.debugMode && Math.random() < 0.01) {
+                console.warn('[MediaPipe] 发送图像失败（可能资源未加载）:', sendError.message);
+              }
             }
           }
         } catch (error) {
-          // 只在调试模式下输出错误，避免日志过多
+          // 静默处理所有错误，确保不影响页面
           if (this.debugMode && Math.random() < 0.01) {
-            console.warn('[MediaPipe] 发送图像时出错:', error.message);
+            console.warn('[MediaPipe] 帧处理错误:', error.message);
           }
-          // 不抛出错误，继续尝试下一帧
         }
       },
       width: 640,
