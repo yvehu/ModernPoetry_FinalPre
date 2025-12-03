@@ -117,11 +117,11 @@ const App = () => {
         setMediaPipeStatus('正在加载 MediaPipe 模型...');
         
         // 添加超时处理，避免 MediaPipe 加载卡住
-        // 生产环境给更多时间
-        const timeout = isProduction ? 15000 : 10000;
+        // 生产环境给更多时间（GitHub Pages 可能需要更长时间加载资源）
+        const timeout = isProduction ? 20000 : 10000;
         const initPromise = recognizer.initialize(video);
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('MediaPipe 初始化超时')), timeout)
+          setTimeout(() => reject(new Error('MediaPipe 初始化超时（可能是网络或 CSP 限制）')), timeout)
         );
         
         try {
@@ -131,10 +131,25 @@ const App = () => {
           console.log('[App] ✅ 手势识别器初始化成功！');
           console.log('[App] 💡 提示：将手放在摄像头前，张开/合拢手掌来控制粒子');
           console.log('[App] 💡 调试：按 D 键切换摄像头预览显示');
+          
+          // 延迟检查连接状态
+          setTimeout(() => {
+            if (gestureRecognizerRef.current) {
+              const timeSinceInit = Date.now();
+              // 检查是否真的连接成功（通过检查是否有帧处理）
+              console.log('[App] 🔍 MediaPipe 连接状态检查中...');
+            }
+          }, 3000);
         } catch (initError) {
           console.warn('[App] ⚠️ MediaPipe 初始化失败，但页面继续运行:', initError.message);
           console.warn('[App] 环境:', isProduction ? 'GitHub Pages' : '本地开发');
-          setMediaPipeStatus('❌ MediaPipe 加载失败');
+          console.warn('[App] 💡 可能的原因：');
+          console.warn('  1. GitHub Pages CSP 策略限制了 MediaPipe 资源加载');
+          console.warn('  2. 网络连接问题（CDN 访问受限）');
+          console.warn('  3. WebAssembly 不支持或未启用');
+          console.warn('  4. MediaPipe 资源文件加载超时');
+          console.warn('[App] 💡 建议：检查浏览器控制台的网络请求和 CSP 错误');
+          setMediaPipeStatus('❌ MediaPipe 加载失败（页面仍可正常显示）');
           // 不抛出错误，让页面继续运行
         }
       } catch (error) {

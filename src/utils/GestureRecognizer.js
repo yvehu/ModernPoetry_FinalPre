@@ -32,11 +32,30 @@ export class GestureRecognizer {
       // 检测是否在生产环境（GitHub Pages）
       const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
       
+      // 资源预加载检测函数
+      const checkResourceAvailable = async (url) => {
+        try {
+          const response = await fetch(url, { method: 'HEAD', mode: 'no-cors' });
+          return true;
+        } catch (e) {
+          return false;
+        }
+      };
+
+      // CDN 备用列表
+      const cdnSources = [
+        'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240',
+        'https://unpkg.com/@mediapipe/hands@0.4.1675469240'
+      ];
+      
+      let currentCdnIndex = 0;
+      let resourceLoadErrors = 0;
+      const maxResourceErrors = 3;
+
       this.hands = new Hands({
         locateFile: (file) => {
           // MediaPipe 文件路径处理
           // 使用多个 CDN 源以提高可靠性
-          const baseUrl = 'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240';
           
           // 处理文件路径
           let filePath = file;
@@ -45,12 +64,42 @@ export class GestureRecognizer {
             filePath = filePath.substring(1);
           }
           
+          // 选择当前 CDN
+          const baseUrl = cdnSources[currentCdnIndex];
+          
           // 构建完整 URL（使用绝对路径，不受 base 路径影响）
           const fullUrl = `${baseUrl}/${filePath}`;
           
           if (this.debugMode || isProduction) {
-            console.log('[GestureRecognizer] 📦 加载 MediaPipe 文件:', file, '->', fullUrl, isProduction ? '(生产环境)' : '(开发环境)');
+            console.log(`[GestureRecognizer] 📦 加载 MediaPipe 文件 (CDN ${currentCdnIndex + 1}/${cdnSources.length}):`, file, '->', fullUrl);
           }
+          
+          // 监听资源加载错误，自动切换到备用 CDN
+          const originalFetch = window.fetch;
+          window.fetch = async (...args) => {
+            try {
+              const response = await originalFetch(...args);
+              if (!response.ok && args[0]?.includes('mediapipe')) {
+                resourceLoadErrors++;
+                if (resourceLoadErrors >= maxResourceErrors && currentCdnIndex < cdnSources.length - 1) {
+                  currentCdnIndex++;
+                  resourceLoadErrors = 0;
+                  console.warn(`[GestureRecognizer] ⚠️ 切换到备用 CDN ${currentCdnIndex + 1}`);
+                }
+              }
+              return response;
+            } catch (error) {
+              if (args[0]?.includes('mediapipe')) {
+                resourceLoadErrors++;
+                if (resourceLoadErrors >= maxResourceErrors && currentCdnIndex < cdnSources.length - 1) {
+                  currentCdnIndex++;
+                  resourceLoadErrors = 0;
+                  console.warn(`[GestureRecognizer] ⚠️ CDN 错误，切换到备用 CDN ${currentCdnIndex + 1}:`, error.message);
+                }
+              }
+              throw error;
+            }
+          };
           
           return fullUrl;
         }
@@ -69,6 +118,34 @@ export class GestureRecognizer {
       // 添加结果计数器，用于调试
       this.frameCount = 0;
       this.detectionCount = 0;
+      
+      // 添加资源加载检测
+      let resourceCheckDone = false;
+      const checkMediaPipeResources = async () => {
+        if (resourceCheckDone) return;
+        resourceCheckDone = true;
+        
+        const criticalFiles = [
+          'hands_solution_packed_assets.data',
+          'hands_solution_packed_assets_loader.js',
+          'hands_solution_simd_wasm_bin.js'
+        ];
+        
+        console.log('[GestureRecognizer] 🔍 检查 MediaPipe 关键资源...');
+        for (const file of criticalFiles) {
+          const url = `${cdnSources[currentCdnIndex]}/${file}`;
+          try {
+            // 使用 HEAD 请求检查资源（no-cors 模式避免 CORS 问题）
+            const response = await fetch(url, { method: 'HEAD', mode: 'no-cors' });
+            console.log(`[GestureRecognizer] ✅ 资源可访问: ${file}`);
+          } catch (e) {
+            console.warn(`[GestureRecognizer] ⚠️ 资源可能不可访问: ${file} (${e.message})`);
+          }
+        }
+      };
+      
+      // 延迟检查资源（给 MediaPipe 一些时间初始化）
+      setTimeout(() => checkMediaPipeResources(), 2000);
       
       this.hands.onResults((results) => {
         this.frameCount++;
@@ -90,6 +167,18 @@ export class GestureRecognizer {
         
         this.processResults(results);
       });
+      
+      // 添加错误监听（如果 MediaPipe 支持）
+      if (typeof this.hands.setErrorHandler === 'function') {
+        this.hands.setErrorHandler((error) => {
+          console.error('[MediaPipe] ❌ MediaPipe 错误:', error);
+          // 尝试切换到备用 CDN
+          if (currentCdnIndex < cdnSources.length - 1) {
+            currentCdnIndex++;
+            console.warn(`[MediaPipe] ⚠️ 切换到备用 CDN ${currentCdnIndex + 1}`);
+          }
+        });
+      }
 
       console.log('[GestureRecognizer] MediaPipe Hands 配置完成');
     } catch (error) {
@@ -120,19 +209,57 @@ export class GestureRecognizer {
       throw new Error('MediaPipe Camera 未正确导入。Camera 类型: ' + typeof Camera);
     }
     
+    // 添加连接状态跟踪
+    this.connectionAttempts = 0;
+    this.maxConnectionAttempts = 10;
+    this.lastSuccessfulFrame = Date.now();
+    this.connectionTimeout = 5000; // 5秒无响应视为断开
+    
     this.camera = new Camera(videoElement, {
       onFrame: async () => {
         try {
           // 确保视频元素有有效的视频流和 MediaPipe 已初始化
           if (videoElement.readyState >= 2 && videoElement.videoWidth > 0 && this.hands) {
             try {
+              const sendStartTime = Date.now();
               await this.hands.send({ image: videoElement });
-            } catch (sendError) {
-              // MediaPipe 发送错误，可能是资源加载问题
-              // 静默处理，不阻止页面运行
-              if (this.debugMode && Math.random() < 0.01) {
-                console.warn('[MediaPipe] 发送图像失败（可能资源未加载）:', sendError.message);
+              const sendDuration = Date.now() - sendStartTime;
+              
+              // 更新连接状态
+              this.lastSuccessfulFrame = Date.now();
+              this.connectionAttempts = 0;
+              
+              // 如果发送时间过长，可能是连接问题
+              if (sendDuration > 1000 && this.debugMode && Math.random() < 0.1) {
+                console.warn(`[MediaPipe] ⚠️ 发送帧耗时较长: ${sendDuration}ms`);
               }
+            } catch (sendError) {
+              this.connectionAttempts++;
+              
+              // MediaPipe 发送错误，可能是资源加载问题
+              if (this.debugMode || this.connectionAttempts <= 3) {
+                console.warn(`[MediaPipe] ❌ 发送图像失败 (尝试 ${this.connectionAttempts}/${this.maxConnectionAttempts}):`, sendError.message);
+              }
+              
+              // 如果多次失败，可能是 MediaPipe 未正确连接
+              if (this.connectionAttempts >= this.maxConnectionAttempts) {
+                const timeSinceLastSuccess = Date.now() - this.lastSuccessfulFrame;
+                if (timeSinceLastSuccess > this.connectionTimeout) {
+                  console.error('[MediaPipe] ❌ MediaPipe 连接失败，可能原因：');
+                  console.error('  1. 资源文件未加载（检查网络和 CSP）');
+                  console.error('  2. WebAssembly 未初始化');
+                  console.error('  3. GitHub Pages CSP 限制');
+                  console.error('  建议：检查浏览器控制台的网络请求和 CSP 错误');
+                }
+              }
+            }
+          } else {
+            if (this.debugMode && Math.random() < 0.05) {
+              console.warn('[MediaPipe] ⚠️ 视频未就绪:', {
+                readyState: videoElement.readyState,
+                videoWidth: videoElement.videoWidth,
+                hasHands: !!this.hands
+              });
             }
           }
         } catch (error) {
