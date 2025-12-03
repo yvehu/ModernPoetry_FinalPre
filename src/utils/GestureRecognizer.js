@@ -9,41 +9,135 @@ export class GestureRecognizer {
     this.lastHandDistance = null;
     this.scale = 1.0;
     this.smoothingFactor = 0.1; // 用于平滑手势变化
-    this.debugMode = false; // 调试模式
+    this.debugMode = true; // 启用调试模式，帮助排查问题
     this.lastGestureTime = Date.now(); // 最后手势活动时间
     this.idleThreshold = 3000; // 3秒无手势后视为空闲
   }
 
   async initialize(videoElement) {
-    this.hands = new Hands({
-      locateFile: (file) => {
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-      }
-    });
+    try {
+      console.log('[GestureRecognizer] 开始初始化 MediaPipe Hands...');
+      
+      // 使用正确的 MediaPipe 配置
+      // 根据 MediaPipe 文档，locateFile 应该返回相对于基础路径的文件路径
+      this.hands = new Hands({
+        locateFile: (file) => {
+          // MediaPipe 期望返回相对于基础 URL 的路径
+          // 使用 npm CDN 的正确格式
+          const baseUrl = 'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240';
+          
+          // 处理文件路径
+          let filePath = file;
+          // 移除开头的斜杠
+          if (filePath.startsWith('/')) {
+            filePath = filePath.substring(1);
+          }
+          
+          // 构建完整 URL
+          const fullUrl = `${baseUrl}/${filePath}`;
+          
+          // 只在调试模式下输出
+          if (this.debugMode && Math.random() < 0.1) {
+            console.log('[GestureRecognizer] 📦 加载 MediaPipe 文件:', filePath);
+          }
+          
+          return fullUrl;
+        }
+      });
 
-    this.hands.setOptions({
-      maxNumHands: 2,
-      modelComplexity: 1,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5
-    });
+      this.hands.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.3, // 降低阈值，更容易检测到手部
+        minTrackingConfidence: 0.3   // 降低阈值，提高跟踪稳定性
+      });
 
-    this.hands.onResults((results) => {
-      this.processResults(results);
-    });
+      // 添加结果计数器，用于调试
+      this.frameCount = 0;
+      this.detectionCount = 0;
+      
+      this.hands.onResults((results) => {
+        this.frameCount++;
+        const handCount = results.multiHandLandmarks ? results.multiHandLandmarks.length : 0;
+        
+        // 调试：每100帧输出一次统计信息
+        if (this.debugMode && this.frameCount % 100 === 0) {
+          const detectionRate = (this.detectionCount / this.frameCount * 100).toFixed(1);
+          console.log(`[MediaPipe] 统计: 总帧数=${this.frameCount}, 检测到=${this.detectionCount}, 检测率=${detectionRate}%`);
+        }
+        
+        if (handCount > 0) {
+          this.detectionCount++;
+          // 只在检测到手部时输出（降低频率）
+          if (this.debugMode && this.frameCount % 30 === 0) {
+            console.log(`[MediaPipe] ✅ 检测到 ${handCount} 只手`);
+          }
+        }
+        
+        this.processResults(results);
+      });
 
-    this.camera = new Camera(videoElement, {
+      console.log('[GestureRecognizer] MediaPipe Hands 配置完成');
+    } catch (error) {
+      console.error('[GestureRecognizer] MediaPipe Hands 创建失败:', error);
+      throw error;
+    }
+
+    // 确保视频元素已加载
+    if (videoElement.readyState < 2) {
+      await new Promise((resolve) => {
+        videoElement.addEventListener('loadedmetadata', resolve, { once: true });
+      });
+    }
+
+      this.camera = new Camera(videoElement, {
       onFrame: async () => {
-        await this.hands.send({ image: videoElement });
+        try {
+          // 确保视频元素有有效的视频流
+          if (videoElement.readyState >= 2 && videoElement.videoWidth > 0 && this.hands) {
+            await this.hands.send({ image: videoElement });
+          } else {
+            // 如果视频还没准备好，等待一下
+            if (this.debugMode && Math.random() < 0.001) {
+              console.log('[MediaPipe] 等待视频准备就绪...', {
+                readyState: videoElement.readyState,
+                videoWidth: videoElement.videoWidth,
+                hasHands: !!this.hands
+              });
+            }
+          }
+        } catch (error) {
+          // 只在调试模式下输出错误，避免日志过多
+          if (this.debugMode && Math.random() < 0.01) {
+            console.warn('[MediaPipe] 发送图像时出错:', error.message);
+          }
+          // 不抛出错误，继续尝试下一帧
+        }
       },
       width: 640,
       height: 480
     });
 
-    await this.camera.start();
+    try {
+      await this.camera.start();
+      console.log('[GestureRecognizer] 摄像头启动成功');
+      console.log('[GestureRecognizer] 视频尺寸:', videoElement.videoWidth, 'x', videoElement.videoHeight);
+    } catch (error) {
+      console.error('[GestureRecognizer] 摄像头启动失败:', error);
+      throw error;
+    }
   }
 
   processResults(results) {
+    // 确保 results 对象存在
+    if (!results) {
+      if (this.debugMode && Math.random() < 0.01) {
+        console.warn('[Gesture] processResults 收到空结果');
+      }
+      return;
+    }
+    
+    const handCount = results.multiHandLandmarks ? results.multiHandLandmarks.length : 0;
     
     if (results.multiHandLandmarks && results.multiHandLandmarks.length === 2) {
       // 检测到两只手
@@ -77,8 +171,8 @@ export class GestureRecognizer {
       // 更新最后手势时间
       this.lastGestureTime = Date.now();
 
-      // 通知更新
-      if (this.onGestureUpdate) {
+      // 通知更新（两只手的情况）
+      if (this.onGestureUpdate && !isNaN(this.scale) && isFinite(this.scale)) {
         this.onGestureUpdate({
           scale: this.scale,
           handsDetected: true,
@@ -125,43 +219,65 @@ export class GestureRecognizer {
       // 动态归一化：使用当前值和历史值来适应不同人的手大小
       if (this.lastHandDistance === null) {
         this.lastHandDistance = avgPalmDistance;
+        // 初始化时，设置 scale 为 1.0
+        this.scale = 1.0;
       }
       
       // 计算相对于基准的变化比例
       const baseDistance = Math.max(0.05, this.lastHandDistance); // 防止除零
       const distanceRatio = avgPalmDistance / baseDistance;
       
-      // 更新基准（缓慢适应）
-      this.lastHandDistance = this.lastHandDistance * 0.99 + avgPalmDistance * 0.01;
+      // 更新基准（更慢的适应速度，保持基准稳定，让手势变化更明显）
+      // 只有当手势明显变化时才更新基准
+      const distanceChange = Math.abs(avgPalmDistance - this.lastHandDistance);
+      if (distanceChange > this.lastHandDistance * 0.1) {
+        // 手势变化超过10%时才更新基准
+        this.lastHandDistance = this.lastHandDistance * 0.98 + avgPalmDistance * 0.02;
+      }
       
-      // 计算缩放：基于距离比例，范围 0.3 到 2.5
+      // 改进的缩放计算：基于距离比例，范围 0.5 到 2.0
       // 当手指张开时，distanceRatio 增大；合拢时减小
-      const rawScale = Math.max(0.3, Math.min(2.5, 0.5 + (distanceRatio - 0.8) * 2));
+      // 使用更敏感的映射：1.0 对应基准距离，1.3 对应 1.6倍缩放，0.7 对应 0.6倍缩放
+      const scaleRange = 2.0; // 增大缩放范围，让效果更明显
+      const rawScale = Math.max(0.5, Math.min(2.0, 1.0 + (distanceRatio - 1.0) * scaleRange));
       
       // 使用更快的平滑，让响应更灵敏
-      const fastSmoothingFactor = 0.4; // 进一步提高响应速度
+      const fastSmoothingFactor = 0.5; // 进一步提高响应速度到0.5，几乎实时响应
       this.scale = this.scale * (1 - fastSmoothingFactor) + rawScale * fastSmoothingFactor;
+      
+      // 确保 scale 在合理范围内
+      this.scale = Math.max(0.5, Math.min(2.0, this.scale));
 
-      // 调试信息（可选，在控制台查看）
+      // 调试信息（提高频率，确保能看到变化）
       if (this.debugMode) {
-        console.log('单手控制:', {
-          avgFingerDistance: avgFingerDistance.toFixed(3),
-          avgPalmDistance: avgPalmDistance.toFixed(3),
-          distanceRatio: distanceRatio.toFixed(3),
-          rawScale: rawScale.toFixed(3),
-          currentScale: this.scale.toFixed(3)
-        });
+        if (!this.debugFrameCount) this.debugFrameCount = 0;
+        this.debugFrameCount++;
+        // 每5帧输出一次
+        if (this.debugFrameCount % 5 === 0) {
+          console.log('[Gesture] ✋ 单手控制:', {
+            avgPalmDistance: avgPalmDistance.toFixed(3),
+            baseDistance: baseDistance.toFixed(3),
+            distanceRatio: distanceRatio.toFixed(3),
+            rawScale: rawScale.toFixed(3),
+            currentScale: this.scale.toFixed(3),
+            scaleChange: Math.abs(this.scale - 1.0).toFixed(3),
+            callbackExists: !!this.onGestureUpdate
+          });
+        }
       }
 
       // 更新最后手势时间
       this.lastGestureTime = Date.now();
 
-      if (this.onGestureUpdate) {
+      // 确保回调函数存在且 scale 是有效值
+      if (this.onGestureUpdate && !isNaN(this.scale) && isFinite(this.scale)) {
         this.onGestureUpdate({
           scale: this.scale,
           handsDetected: true,
           handDistance: avgPalmDistance
         });
+      } else if (this.debugMode && Math.random() < 0.01) {
+        console.warn('[Gesture] 无效的 scale 值或回调函数不存在:', this.scale);
       }
     } else {
       // 没有检测到手，检查是否长时间无手势

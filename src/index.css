@@ -16,5 +16,12 @@ body {
 #root {
   width: 100vw;
   height: 100vh;
+  position: relative;
+  background: #1a1a2e; /* 添加背景色，确保能看到页面 */
+}
+
+/* 确保 body 有背景色 */
+body {
+  background: #1a1a2e !important;
 }
 

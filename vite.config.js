@@ -7,10 +7,15 @@ const repositoryName = 'ModernPoetry_FinalPre' // 请根据你的实际仓库名
 
 export default defineConfig({
   plugins: [react()],
-  base: `/${repositoryName}/`, // GitHub Pages 的 base 路径
+  // 开发环境使用根路径，生产环境使用仓库路径
+  base: process.env.NODE_ENV === 'production' ? `/${repositoryName}/` : '/',
   server: {
     port: 3000,
-    open: true
+    open: true,
+    headers: {
+      // 允许 MediaPipe 使用 eval（仅开发环境）
+      'Content-Security-Policy': "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net; object-src 'none';"
+    }
   }
 })
 

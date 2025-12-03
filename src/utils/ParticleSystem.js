@@ -20,7 +20,10 @@ export class ParticleSystem {
   }
 
   createParticles() {
+    console.log('[ParticleSystem] 🎨 开始创建粒子...');
     const particleCount = this.config.count || 1000;
+    console.log('[ParticleSystem] 📊 粒子数量:', particleCount);
+    
     const positions = new Float32Array(particleCount * 3);
     const colors = new Float32Array(particleCount * 3);
     const sizes = new Float32Array(particleCount);
@@ -67,10 +70,63 @@ export class ParticleSystem {
       this.particleColors.push(color);
     }
 
-    this.particleGeometry = new THREE.BufferGeometry();
-    this.particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    this.particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    this.particleGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    try {
+      this.particleGeometry = new THREE.BufferGeometry();
+      
+      // 确保数组有效
+      if (!positions || positions.length === 0) {
+        throw new Error('粒子位置数组无效: ' + positions);
+      }
+      if (!colors || colors.length === 0) {
+        throw new Error('粒子颜色数组无效: ' + colors);
+      }
+      if (!sizes || sizes.length === 0) {
+        throw new Error('粒子大小数组无效: ' + sizes);
+      }
+      
+      // 验证数组类型
+      if (!(positions instanceof Float32Array)) {
+        console.warn('[ParticleSystem] ⚠️ positions 不是 Float32Array，类型:', typeof positions);
+      }
+      if (!(colors instanceof Float32Array)) {
+        console.warn('[ParticleSystem] ⚠️ colors 不是 Float32Array，类型:', typeof colors);
+      }
+      if (!(sizes instanceof Float32Array)) {
+        console.warn('[ParticleSystem] ⚠️ sizes 不是 Float32Array，类型:', typeof sizes);
+      }
+      
+      console.log('[ParticleSystem] 📊 创建 BufferAttribute，数组长度:', {
+        positions: positions.length,
+        colors: colors.length,
+        sizes: sizes.length
+      });
+      
+      // 创建 BufferAttribute
+      const positionAttr = new THREE.BufferAttribute(positions, 3);
+      const colorAttr = new THREE.BufferAttribute(colors, 3);
+      const sizeAttr = new THREE.BufferAttribute(sizes, 1);
+      
+      // 验证属性创建成功
+      if (!positionAttr || !positionAttr.array) {
+        throw new Error('position BufferAttribute 创建失败');
+      }
+      if (!colorAttr || !colorAttr.array) {
+        throw new Error('color BufferAttribute 创建失败');
+      }
+      if (!sizeAttr || !sizeAttr.array) {
+        throw new Error('size BufferAttribute 创建失败');
+      }
+      
+      this.particleGeometry.setAttribute('position', positionAttr);
+      this.particleGeometry.setAttribute('color', colorAttr);
+      this.particleGeometry.setAttribute('size', sizeAttr);
+      
+      console.log('[ParticleSystem] ✅ 几何体创建成功');
+    } catch (error) {
+      console.error('[ParticleSystem] ❌ 几何体创建失败:', error);
+      console.error('[ParticleSystem] 错误堆栈:', error.stack);
+      throw error;
+    }
 
     this.particleMaterial = new THREE.PointsMaterial({
       size: this.config.size || 0.02,
@@ -83,6 +139,13 @@ export class ParticleSystem {
 
     this.particles = new THREE.Points(this.particleGeometry, this.particleMaterial);
     this.scene.add(this.particles);
+    
+    console.log('[ParticleSystem] ✅ 粒子创建完成:', {
+      particleCount: particleCount,
+      geometryVertices: this.particleGeometry.attributes.position.count,
+      materialSize: this.particleMaterial.size,
+      sceneChildren: this.scene.children.length
+    });
   }
 
   defaultPositionGenerator(i, count) {
@@ -94,7 +157,31 @@ export class ParticleSystem {
   }
 
   update(deltaTime, gestureScale = 1.0, shouldReset = false, hasGesture = false) {
-    if (!this.particles || !this.particleGeometry) return;
+    // 确保所有必要的对象都存在
+    if (!this.particles || !this.particleGeometry) {
+      if (Math.random() < 0.01) {
+        console.warn('[ParticleSystem] ⚠️ 粒子系统未初始化，跳过更新');
+      }
+      return;
+    }
+    
+    // 确保几何体属性存在
+    const positionAttr = this.particleGeometry.attributes.position;
+    const colorAttr = this.particleGeometry.attributes.color;
+    const sizeAttr = this.particleGeometry.attributes.size;
+    
+    if (!positionAttr || !positionAttr.array) {
+      console.error('[ParticleSystem] ❌ position 属性不存在或无效');
+      return;
+    }
+    if (!colorAttr || !colorAttr.array) {
+      console.error('[ParticleSystem] ❌ color 属性不存在或无效');
+      return;
+    }
+    if (!sizeAttr || !sizeAttr.array) {
+      console.error('[ParticleSystem] ❌ size 属性不存在或无效');
+      return;
+    }
 
     // 处理重置逻辑
     if (shouldReset) {
@@ -117,15 +204,35 @@ export class ParticleSystem {
     }
 
     // 平滑更新缩放（更快响应，提高灵敏度）
-    this.baseScale += (gestureScale - this.baseScale) * 0.25; // 从0.15提高到0.25，更快响应
+    const oldBaseScale = this.baseScale;
+    this.baseScale += (gestureScale - this.baseScale) * 0.5; // 进一步提高响应速度到0.5，几乎实时
     this.targetScale = this.baseScale;
+    
+    // 调试：每次有手势时都输出（临时调试）
+    if (hasGesture) {
+      // 每10帧输出一次
+      if (!this.debugFrameCount) this.debugFrameCount = 0;
+      this.debugFrameCount++;
+      if (this.debugFrameCount % 10 === 0) {
+        console.log('[ParticleSystem] 🎨 缩放更新:', {
+          gestureScale: gestureScale.toFixed(3),
+          oldBaseScale: oldBaseScale.toFixed(3),
+          newBaseScale: this.baseScale.toFixed(3),
+          targetScale: this.targetScale.toFixed(3),
+          hasGesture: hasGesture,
+          scaleChange: Math.abs(this.targetScale - 1.0).toFixed(3),
+          scaleChanged: Math.abs(this.baseScale - oldBaseScale) > 0.001
+        });
+      }
+    }
     
     // 检测是否有手势输入（缩放明显偏离1.0，或者有手势检测）
     const hasActiveGesture = hasGesture || Math.abs(this.targetScale - 1.0) > 0.05;
 
-    const positions = this.particleGeometry.attributes.position.array;
-    const colors = this.particleGeometry.attributes.color.array;
-    const sizes = this.particleGeometry.attributes.size.array;
+    // 使用已验证的属性
+    const positions = positionAttr.array;
+    const colors = colorAttr.array;
+    const sizes = sizeAttr.array;
 
     // 更新粒子大小（缩放时粒子也变大/变小）
     const baseSize = this.config.size || 0.02;
@@ -188,11 +295,30 @@ export class ParticleSystem {
         }
       }
 
-      // 应用缩放：基于当前位置相对于原点的缩放
+      // 应用缩放：直接基于初始位置缩放，效果最明显
       // 这样粒子会从中心向外扩展或向内收缩
-      const finalX = pos.x * this.targetScale;
-      const finalY = pos.y * this.targetScale;
-      const finalZ = pos.z * this.targetScale;
+      const initialX = this.initialPositions[i].x;
+      const initialY = this.initialPositions[i].y;
+      const initialZ = this.initialPositions[i].z;
+      
+      // 直接缩放初始位置（相对于原点）
+      // 确保缩放值有效
+      const scale = isNaN(this.targetScale) || !isFinite(this.targetScale) ? 1.0 : this.targetScale;
+      const finalX = initialX * scale;
+      const finalY = initialY * scale;
+      const finalZ = initialZ * scale;
+      
+      // 调试：第一个粒子输出缩放信息（降低频率）
+      if (i === 0 && Math.random() < 0.01 && hasGesture) {
+        console.log('[ParticleSystem] 📍 位置更新示例:', {
+          initialX: initialX.toFixed(3),
+          initialY: initialY.toFixed(3),
+          scale: scale.toFixed(3),
+          finalX: finalX.toFixed(3),
+          finalY: finalY.toFixed(3),
+          scaleChanged: Math.abs(scale - 1.0) > 0.01
+        });
+      }
 
       positions[i3] = finalX;
       positions[i3 + 1] = finalY;
