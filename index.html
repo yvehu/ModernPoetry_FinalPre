@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Content Security Policy: 允许 unsafe-eval 用于 MediaPipe -->
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net; object-src 'none';">
+    <title>Four Ways of Decoding New York</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #1a1a2e;
+        color: white;
+        font-family: Arial, sans-serif;
+        overflow: hidden;
+      }
+      #root {
+        width: 100vw;
+        height: 100vh;
+        background: #1a1a2e;
+      }
+      .debug-info {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        background: rgba(0, 0, 0, 0.9);
+        padding: 15px;
+        border-radius: 8px;
+        z-index: 99999;
+        font-size: 14px;
+        border: 2px solid #4caf50;
+      }
+    </style>
+    <script type="module" crossorigin src="/ModernPoetry_FinalPre/assets/index-DSQS2T-O.js"></script>
+    <link rel="stylesheet" crossorigin href="/ModernPoetry_FinalPre/assets/index-Oxo8Ijtv.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      // 立即执行的调试脚本
+      console.log('[HTML] ✅ HTML 文件已加载');
+      console.log('[HTML] ✅ root 元素:', document.getElementById('root'));
+      document.getElementById('status').textContent = 'JavaScript 正在运行...';
+      
+      // 捕获错误但不显示在页面上（静默处理 MediaPipe 错误）
+      window.addEventListener('error', (e) => {
+        // 如果是 MediaPipe 相关的错误，静默处理
+        if (e.message && e.message.includes('mediapipe') || e.message.includes('cdn.jsdelivr.net')) {
+          console.warn('[HTML] MediaPipe 错误（已静默处理）:', e.message);
+          return; // 不显示错误
+        }
+        // 其他错误才显示
+        console.error('[HTML] ❌ 全局错误:', e.error);
+      });
+      
+      window.addEventListener('load', () => {
+        console.log('[HTML] ✅ 页面加载完成');
+        document.getElementById('status').textContent = '页面加载完成';
+        // 3秒后隐藏状态显示
+        setTimeout(() => {
+          const statusEl = document.getElementById('status');
+          if (statusEl) {
+            statusEl.style.display = 'none';
+          }
+        }, 3000);
+      });
+    </script>
+  </body>
+</html>
+
